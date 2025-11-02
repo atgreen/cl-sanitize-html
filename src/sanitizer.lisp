@@ -35,6 +35,7 @@
 (defmethod sanitize-node ((node plump:root) policy)
   "Sanitize all children of root node"
   (let ((children (plump:children node)))
+    ;; Walk children backwards so removals don't disturb upcoming indices.
     (loop for i from (1- (length children)) downto 0
           for child = (aref children i)
           do (sanitize-node child policy))))
@@ -58,6 +59,7 @@
       (t
        (sanitize-attributes node policy)
        (let ((children (plump:children node)))
+         ;; Iterate in reverse order because recursive sanitizing may mutate children.
          (loop for i from (1- (length children)) downto 0
                for child = (aref children i)
                do (sanitize-node child policy)))))))
@@ -219,4 +221,3 @@
   "Return URL if safe, nil otherwise"
   (when (safe-url-p url policy)
     url))
-
