@@ -95,10 +95,15 @@
    '("http" "https" "mailto" "cid" "data")  ; cid for inline images, data for base64
 
    ;; Email-specific CSS properties (limited set)
+   ;; Excludes dangerous properties: position, z-index, float, transform, etc.
    :allowed-css-properties
    '("color" "background-color" "font-size" "font-family" "font-weight"
      "font-style" "text-align" "text-decoration" "margin" "padding"
-     "border" "width" "height" "display")
+     "border" "border-collapse" "border-spacing" "vertical-align"
+     "width" "min-width" "max-width"
+     "height" "min-height" "max-height"
+     "line-height" "letter-spacing" "word-spacing"
+     "text-indent" "white-space")
 
    :remove-comments t
    :escape-cdata t)
