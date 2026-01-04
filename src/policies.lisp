@@ -31,7 +31,7 @@
    '(("a" . ("href" "title" "rel"))
      ("abbr" . ("title"))
      ("blockquote" . ("cite"))
-     ("img" . ("src" "alt" "title" "width" "height"))
+     ("img" . ("src" "alt" "title" "width" "height" "srcset" "sizes"))
      ("q" . ("cite"))
      ("td" . ("colspan" "rowspan" "headers"))
      ("th" . ("colspan" "rowspan" "headers" "scope"))
@@ -74,7 +74,7 @@
 
    :allowed-attributes
    '(("a" . ("href" "title" "rel" "target"))
-     ("img" . ("src" "alt" "title" "width" "height" "align" "border"))
+     ("img" . ("src" "alt" "title" "width" "height" "align" "border" "srcset" "sizes"))
      ("table" . ("border" "cellpadding" "cellspacing" "width" "align"))
      ("td" . ("colspan" "rowspan" "width" "height" "align" "valign" "bgcolor"))
      ("th" . ("colspan" "rowspan" "width" "height" "align" "valign" "bgcolor"))
@@ -92,7 +92,7 @@
      ("*" . ("class" "id" "style")))  ; Allow inline styles for email formatting
 
    :allowed-protocols
-   '("http" "https" "mailto" "cid" "data")  ; cid for inline images, data for base64
+   '("http" "https" "mailto" "cid")  ; cid for inline images; data: removed - too dangerous
 
    ;; Email-specific CSS properties (limited set)
    ;; Excludes dangerous properties: position, z-index, float, transform, etc.
@@ -132,10 +132,56 @@
             allowed
             :test #'string-equal)))
 
+(defun decode-html-entities (string)
+  "Decode HTML entities in STRING for security checking.
+   Handles numeric (&#DD;), hex (&#xHH;), and common named entities."
+  (when (null string)
+    (return-from decode-html-entities ""))
+  (let ((result string))
+    ;; Decode hex entities: &#xHH; or &#XHH;
+    (setf result
+          (cl-ppcre:regex-replace-all
+           "&#[xX]([0-9a-fA-F]+);?"
+           result
+           (lambda (match hex-str)
+             (declare (ignore match))
+             (handler-case
+                 (string (code-char (parse-integer hex-str :radix 16)))
+               (error () "")))
+           :simple-calls t))
+    ;; Decode decimal entities: &#DD;
+    (setf result
+          (cl-ppcre:regex-replace-all
+           "&#([0-9]+);?"
+           result
+           (lambda (match dec-str)
+             (declare (ignore match))
+             (handler-case
+                 (string (code-char (parse-integer dec-str :radix 10)))
+               (error () "")))
+           :simple-calls t))
+    ;; Decode common named entities that could be used in attacks
+    (setf result (cl-ppcre:regex-replace-all "&Tab;" result (string #\Tab)))
+    (setf result (cl-ppcre:regex-replace-all "&NewLine;" result (string #\Newline)))
+    (setf result (cl-ppcre:regex-replace-all "&colon;" result ":"))
+    result))
+
+(defun normalize-url-for-security (url)
+  "Normalize URL for security checking by decoding entities and stripping
+   whitespace/control characters that browsers ignore."
+  (when (null url)
+    (return-from normalize-url-for-security ""))
+  (let ((decoded (decode-html-entities url)))
+    ;; Remove ASCII control characters (0x00-0x1F) and whitespace
+    ;; Browsers typically ignore these in URL schemes
+    (cl-ppcre:regex-replace-all "[\\x00-\\x20\\x7F]+" decoded "")))
+
 (defun protocol-allowed-p (policy url)
-  "Check if URL uses an allowed protocol according to POLICY"
+  "Check if URL uses an allowed protocol according to POLICY.
+   Normalizes URL first to prevent encoding-based bypasses."
   (when (and url (stringp url))
-    (let ((url-lower (string-downcase url)))
+    (let* ((normalized (normalize-url-for-security url))
+           (url-lower (string-downcase normalized)))
       (or
        ;; Relative URLs (no protocol)
        (and (> (length url-lower) 0)

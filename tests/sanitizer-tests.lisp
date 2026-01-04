@@ -295,3 +295,93 @@
     (is (search "color" result))
     (is (search "font-size" result))
     (is (search "margin" result))))
+
+;;; URL encoding bypass prevention tests
+
+(test test-url-html-entity-decimal-bypass
+  "Test that decimal HTML entities in URLs don't bypass protocol check"
+  ;; &#106; = 'j', so &#106;avascript: = javascript:
+  (let* ((html "<a href='&#106;avascript:alert(1)'>click</a>")
+         (result (sanitize html)))
+    (is (not (search "javascript" result)))
+    (is (not (search "&#106;" result)))))
+
+(test test-url-html-entity-hex-bypass
+  "Test that hex HTML entities in URLs don't bypass protocol check"
+  ;; &#x6a; = 'j', so &#x6a;avascript: = javascript:
+  (let* ((html "<a href='&#x6a;avascript:alert(1)'>click</a>")
+         (result (sanitize html)))
+    (is (not (search "javascript" result)))
+    (is (not (search "&#x6a;" result)))))
+
+(test test-url-whitespace-bypass
+  "Test that whitespace in URLs doesn't bypass protocol check"
+  ;; Browsers may ignore whitespace/newlines in URL schemes
+  (let* ((html "<a href='java
+script:alert(1)'>click</a>")
+         (result (sanitize html)))
+    (is (not (search "script" result)))))
+
+(test test-url-tab-bypass
+  "Test that tabs in URLs don't bypass protocol check"
+  (let* ((html (format nil "<a href='java~Cscript:alert(1)'>click</a>" #\Tab))
+         (result (sanitize html)))
+    (is (not (search "script" result)))))
+
+(test test-url-leading-whitespace-bypass
+  "Test that leading whitespace in URLs doesn't bypass protocol check"
+  (let* ((html "<a href='   javascript:alert(1)'>click</a>")
+         (result (sanitize html)))
+    (is (not (search "javascript" result)))))
+
+(test test-data-url-blocked-in-default
+  "Test that data: URLs are blocked in default policy"
+  (let* ((html "<img src='data:text/html,<script>alert(1)</script>'>")
+         (result (sanitize html)))
+    (is (not (search "data:" result)))))
+
+(test test-data-url-blocked-in-email
+  "Test that data: URLs are now blocked in email policy"
+  (let* ((html "<img src='data:image/svg+xml,<svg onload=alert(1)>'>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "data:" result)))))
+
+(test test-ping-attribute-removed
+  "Test that ping attribute is always removed (tracking prevention)"
+  (let* ((html "<a href='http://example.com' ping='http://tracker.com'>Link</a>")
+         (result (sanitize html)))
+    (is (not (search "ping" result)))
+    (is (search "href" result))))
+
+(test test-srcset-safe-urls-preserved
+  "Test that safe URLs in srcset are preserved"
+  (let* ((html "<img srcset='http://example.com/small.jpg 1x, https://example.com/large.jpg 2x'>")
+         (result (sanitize html)))
+    (is (search "srcset" result))
+    (is (search "http://example.com/small.jpg" result))
+    (is (search "https://example.com/large.jpg" result))))
+
+(test test-srcset-unsafe-urls-removed
+  "Test that unsafe URLs in srcset are removed"
+  (let* ((html "<img srcset='javascript:alert(1) 1x, http://safe.com/img.jpg 2x'>")
+         (result (sanitize html)))
+    (is (not (search "javascript" result)))
+    (is (search "http://safe.com" result))))
+
+(test test-srcset-all-unsafe-removes-attribute
+  "Test that srcset is removed if all URLs are unsafe"
+  (let* ((html "<img srcset='javascript:alert(1) 1x, data:image/png;base64,xxx 2x'>")
+         (result (sanitize html)))
+    (is (not (search "srcset" result)))))
+
+(test test-formaction-removed
+  "Test that formaction attribute is removed"
+  (let* ((html "<button formaction='javascript:alert(1)'>Submit</button>")
+         (result (sanitize html)))
+    (is (not (search "formaction" result)))))
+
+(test test-xlink-href-removed
+  "Test that xlink:href attribute is removed"
+  (let* ((html "<a xlink:href='javascript:alert(1)'>Link</a>")
+         (result (sanitize html)))
+    (is (not (search "xlink:href" result)))))

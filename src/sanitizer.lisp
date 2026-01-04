@@ -142,6 +142,14 @@
     (sanitize-url-attribute element "href" policy)
     (sanitize-url-attribute element "src" policy)
     (sanitize-url-attribute element "cite" policy)
+    (sanitize-url-attribute element "poster" policy)
+    (sanitize-url-attribute element "background" policy)
+
+    ;; Handle srcset specially (contains multiple URLs)
+    (sanitize-srcset-attribute element policy)
+
+    ;; Remove dangerous attributes that could leak data or enable attacks
+    (remove-dangerous-attributes element)
 
     ;; Sanitize style attribute if present
     (when (plump:attribute element "style")
@@ -158,6 +166,39 @@
   (when-let ((url (plump:attribute element attr-name)))
     (unless (protocol-allowed-p policy url)
       (plump:remove-attribute element attr-name))))
+
+(defun sanitize-srcset-attribute (element policy)
+  "Sanitize srcset attribute which contains multiple URLs with descriptors.
+   Format: 'url1 1x, url2 2x' or 'url1 100w, url2 200w'"
+  (when-let ((srcset (plump:attribute element "srcset")))
+    (let ((parts (cl-ppcre:split "," srcset))
+          (safe-parts nil))
+      (dolist (part parts)
+        (let* ((trimmed (string-trim '(#\Space #\Tab) part))
+               ;; Split on whitespace to get URL and descriptor
+               (tokens (cl-ppcre:split "\\s+" trimmed)))
+          (when (and tokens (> (length tokens) 0))
+            (let ((url (first tokens)))
+              ;; Only keep if URL is safe
+              (when (protocol-allowed-p policy url)
+                (push trimmed safe-parts))))))
+      (if safe-parts
+          (plump:set-attribute element "srcset"
+                               (format nil "~{~A~^, ~}" (nreverse safe-parts)))
+          (plump:remove-attribute element "srcset")))))
+
+(defun remove-dangerous-attributes (element)
+  "Remove attributes that could be used for tracking or attacks.
+   These are removed regardless of policy."
+  ;; ping attribute on <a> can be used for tracking/data exfiltration
+  (plump:remove-attribute element "ping")
+  ;; formaction can override form action (XSS vector)
+  (plump:remove-attribute element "formaction")
+  ;; xlink:href for SVG (XSS vector if SVG allowed)
+  (plump:remove-attribute element "xlink:href")
+  ;; data-* attributes could potentially be exploited
+  ;; but are commonly used legitimately, so we leave them
+  )
 
 (defun sanitize-style-attribute (element policy)
   "Sanitize inline CSS in style attribute"
