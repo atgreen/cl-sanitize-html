@@ -8,6 +8,22 @@
 
 (in-package #:sanitize-html)
 
+(defun decode-double-encoded-entities (html-string)
+  "Fix double-encoded HTML entities that result from Plump serialization.
+   When Plump serializes, it encodes & to &amp;, so &gt; becomes &amp;gt;.
+   This function reverses that double-encoding."
+  (let ((result html-string))
+    ;; Fix double-encoded entities
+    (setf result (cl-ppcre:regex-replace-all "&amp;gt;" result "&gt;"))
+    (setf result (cl-ppcre:regex-replace-all "&amp;lt;" result "&lt;"))
+    (setf result (cl-ppcre:regex-replace-all "&amp;quot;" result "&quot;"))
+    (setf result (cl-ppcre:regex-replace-all "&amp;apos;" result "&apos;"))
+    (setf result (cl-ppcre:regex-replace-all "&amp;nbsp;" result "&nbsp;"))
+    ;; Fix triple-encoded ampersands (but not the ones we just created)
+    ;; Only fix &amp;amp; that isn't followed by gt/lt/quot/apos/nbsp
+    (setf result (cl-ppcre:regex-replace-all "&amp;amp;(?!(gt|lt|quot|apos|nbsp);)" result "&amp;"))
+    result))
+
 (defun sanitize-html (html-string &optional (policy *default-policy*))
   "Sanitize HTML-STRING according to POLICY. Returns sanitized HTML string.
    This is the main entry point for HTML sanitization."
@@ -15,11 +31,15 @@
     (return-from sanitize-html ""))
 
   (handler-case
-      (let ((root (plump:parse html-string)))
-        ;; Sanitize all children of root
-        (sanitize-node root policy)
-        ;; Serialize back to HTML
-        (plump:serialize root nil))
+      (let* ((root (plump:parse html-string))
+             ;; Sanitize all children of root
+             (_ (sanitize-node root policy))
+             ;; Serialize back to HTML
+             (serialized (plump:serialize root nil))
+             ;; Fix double-encoded entities caused by serialization
+             (fixed (decode-double-encoded-entities serialized)))
+        (declare (ignore _))
+        fixed)
     (error (e)
       ;; If parsing fails, return empty string for safety
       (format *error-output* "HTML sanitization error: ~A~%" e)
@@ -152,6 +172,81 @@
               (plump:set-attribute element "style" sanitized-style)
               (plump:remove-attribute element "style"))))))
 
+(defun hex-char-p (char)
+  "Return T if CHAR is a hexadecimal digit"
+  (or (digit-char-p char)
+      (find char "abcdefABCDEF")))
+
+(defun decode-css-escapes (css-string)
+  "Decode CSS escape sequences in CSS-STRING.
+   CSS escapes are:
+   - Backslash followed by 1-6 hex digits (optional trailing whitespace consumed)
+   - Backslash followed by any other character (literal escape)
+   Returns the decoded string for security checking."
+  (when (null css-string)
+    (return-from decode-css-escapes ""))
+
+  (with-output-to-string (out)
+    (let ((len (length css-string))
+          (i 0))
+      (loop while (< i len) do
+        (let ((char (char css-string i)))
+          (if (char= char #\\)
+              ;; Found backslash - check for escape sequence
+              (if (>= (1+ i) len)
+                  ;; Trailing backslash - output as-is
+                  (progn
+                    (write-char char out)
+                    (incf i))
+                  ;; Check what follows the backslash
+                  (let ((next-char (char css-string (1+ i))))
+                    (cond
+                      ;; Hex escape: \XX or \XXXXXX
+                      ((hex-char-p next-char)
+                       (let ((hex-start (1+ i))
+                             (hex-end (1+ i)))
+                         ;; Collect up to 6 hex digits
+                         (loop while (and (< hex-end len)
+                                          (< (- hex-end hex-start) 6)
+                                          (hex-char-p (char css-string hex-end)))
+                               do (incf hex-end))
+                         ;; Parse the hex value
+                         (let* ((hex-str (subseq css-string hex-start hex-end))
+                                (code-point (parse-integer hex-str :radix 16)))
+                           ;; Output the character (if valid)
+                           (when (and (> code-point 0) (<= code-point #x10FFFF))
+                             (write-char (code-char code-point) out))
+                           ;; Skip optional trailing whitespace (space, tab, newline)
+                           (when (and (< hex-end len)
+                                      (member (char css-string hex-end)
+                                              '(#\Space #\Tab #\Newline #\Return #\Page)))
+                             (incf hex-end))
+                           (setf i hex-end))))
+                      ;; Newline escapes are ignored (line continuation)
+                      ((member next-char '(#\Newline #\Return #\Page))
+                       (incf i 2))
+                      ;; Any other character: just output it literally
+                      (t
+                       (write-char next-char out)
+                       (incf i 2)))))
+              ;; Regular character - output as-is
+              (progn
+                (write-char char out)
+                (incf i))))))))
+
+(defun css-value-dangerous-p (prop-value)
+  "Check if a CSS property value contains dangerous content.
+   Decodes CSS escapes before checking to prevent bypass attacks."
+  (let ((decoded (string-downcase (decode-css-escapes prop-value))))
+    (or (search "javascript:" decoded)
+        (search "expression" decoded)
+        (search "import" decoded)
+        (search "@import" decoded)
+        (search "url(" decoded)  ; Block all url() to be safe
+        (search "behavior" decoded)
+        (search "binding" decoded)
+        (search "-moz-binding" decoded))))
+
 (defun sanitize-css (css-string allowed-properties)
   "Sanitize CSS string, keeping only allowed properties"
   (when (null css-string)
@@ -167,14 +262,11 @@
                                         (subseq trimmed 0 colon-pos)))
                  (prop-value (string-trim '(#\Space #\Tab)
                                          (subseq trimmed (1+ colon-pos)))))
-            ;; Check if property is allowed and validate value
+            ;; Check if property is allowed and validate value (with escape decoding)
             (when (and (member (string-downcase prop-name)
                               allowed-properties
                               :test #'string-equal)
-                       (not (or (search "javascript:" (string-downcase prop-value))
-                               (search "expression" (string-downcase prop-value))
-                               (search "import" (string-downcase prop-value))
-                               (search "@import" (string-downcase prop-value)))))
+                       (not (css-value-dangerous-p prop-value)))
               (push (format nil "~A: ~A" prop-name prop-value) properties))))))
 
     (format nil "~{~A~^; ~}" (nreverse properties))))

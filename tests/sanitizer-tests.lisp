@@ -234,3 +234,64 @@
   (is (safe-url-p "#anchor"))
   (is (not (safe-url-p "javascript:alert(1)")))
   (is (not (safe-url-p "data:text/html,<script>alert(1)</script>"))))
+
+;;; CSS escape bypass prevention tests
+
+(test test-css-escape-backslash-bypass
+  "Test that backslash escapes in CSS don't bypass sanitization"
+  ;; java\script: should be blocked (backslash before 's')
+  (let* ((html "<p style='background: url(java\\script:alert(1))'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "javascript" result)))
+    (is (not (search "alert" result)))))
+
+(test test-css-escape-hex-bypass
+  "Test that hex escapes in CSS don't bypass sanitization"
+  ;; \6a = 'j', so \6a avascript: = javascript:
+  (let* ((html "<p style='background: url(\\6a avascript:alert(1))'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "javascript" result)))
+    (is (not (search "alert" result)))))
+
+(test test-css-escape-full-hex-bypass
+  "Test that fully hex-encoded javascript: is blocked"
+  ;; \6a\61\76\61\73\63\72\69\70\74 = javascript
+  (let* ((html "<p style='background: url(\\6a\\61\\76\\61\\73\\63\\72\\69\\70\\74:alert(1))'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "url" result)))))
+
+(test test-css-escape-expression-bypass
+  "Test that escaped 'expression' is blocked"
+  ;; expr\65ssion = expression (\65 = 'e')
+  (let* ((html "<p style='width: expr\\65ssion(alert(1))'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "expression" result)))
+    (is (not (search "alert" result)))))
+
+(test test-css-escape-behavior-bypass
+  "Test that escaped 'behavior' is blocked (IE-specific attack)"
+  ;; b\65havior = behavior
+  (let* ((html "<p style='behavior: url(xss.htc)'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "behavior" result)))))
+
+(test test-css-escape-binding-bypass
+  "Test that escaped '-moz-binding' is blocked"
+  (let* ((html "<p style='-moz-binding: url(xss.xml#xss)'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "binding" result)))))
+
+(test test-css-url-blocked
+  "Test that url() is blocked even without javascript:"
+  ;; Blocking url() entirely is safer
+  (let* ((html "<p style='background: url(http://evil.com/track.gif)'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (not (search "url(" result)))))
+
+(test test-css-safe-properties-still-work
+  "Test that safe CSS properties without dangerous values still work"
+  (let* ((html "<p style='color: red; font-size: 14px; margin: 10px'>Text</p>")
+         (result (sanitize html *email-policy*)))
+    (is (search "color" result))
+    (is (search "font-size" result))
+    (is (search "margin" result))))
