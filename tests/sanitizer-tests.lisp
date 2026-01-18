@@ -63,6 +63,27 @@
     (is (not (search "<iframe" result)))
     (is (search "Content" result))))
 
+(defvar *links-only-policy*
+  (make-policy
+   :allowed-tags '("a")
+   :allowed-attributes '(("a" . ("href" "class")))
+   :allowed-protocols '("ftp" "http" "https" "mailto" "relative")
+   :remove-comments t))
+
+(test test-nested-tags-removed
+  "Disallowed tags should be removed recursively"
+  (is (string-equal
+       "Keyboard tips"
+       (sanitize "<h3><h3>Keyboard</h3> <h3>tips</h3></h3>"
+                 *links-only-policy*))))
+
+(test test-nested-tags-removed1
+  "Disallowed tags of different kinds should be removed recursively"
+  (is (string-equal
+       "Keyboard tips"
+       (sanitize "<div id=\"article\"><h3>Keyboard</h3> tips</div>"
+                 *links-only-policy*))))
+
 (test test-form-elements-removed
   "Test that form elements are removed"
   (let ((result (sanitize "<form><input type='text'></form>")))
