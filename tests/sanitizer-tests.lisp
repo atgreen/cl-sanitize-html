@@ -138,6 +138,16 @@
   (let ((result (sanitize "<a href='http://example.com'>Link</a>")))
     (is (search "target=\"_blank\"" result))))
 
+(test test-links-policy-not-target-blank
+  "Policy specifies that anchors should not have target='_blank' set"
+  (is (not (search "target=\"_blank\""
+                   (sanitize
+                    "<a href='http://example.com'>Link</a>"
+                    (make-policy
+                     :allowed-tags '("a")
+                     :allowed-attributes '(("a" . ("href" "title" "rel")))
+                     :override-anchor-target nil))))))
+
 ;;; Policy tests
 
 (test test-strict-policy
