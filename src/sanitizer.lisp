@@ -52,13 +52,16 @@
 (defgeneric sanitize-node (node policy)
   (:documentation "Sanitize a Plump DOM node according to policy"))
 
-(defmethod sanitize-node ((node plump:root) policy)
-  "Sanitize all children of root node"
+(defun sanitize-children (node policy)
   (let ((children (plump:children node)))
-    ;; Walk children backwards so removals don't disturb upcoming indices.
+    ;; Iterate in reverse order because recursive sanitizing may mutate children.
     (loop for i from (1- (length children)) downto 0
           for child = (aref children i)
           do (sanitize-node child policy))))
+
+(defmethod sanitize-node ((node plump:root) policy)
+  "Sanitize all children of root node"
+  (sanitize-children node policy))
 
 (defmethod sanitize-node ((node plump:element) policy)
   "Sanitize an HTML element node"
@@ -73,16 +76,14 @@
                      "textarea" "select" "option" "optgroup" "fieldset" "legend")
                    :test #'string-equal)
            (plump:remove-child node)
-           (remove-element-keep-children node)))
+           (progn
+             (sanitize-children node policy)
+             (remove-element-keep-children node))))
 
       ;; Tag is allowed - sanitize attributes and recurse to children
       (t
        (sanitize-attributes node policy)
-       (let ((children (plump:children node)))
-         ;; Iterate in reverse order because recursive sanitizing may mutate children.
-         (loop for i from (1- (length children)) downto 0
-               for child = (aref children i)
-               do (sanitize-node child policy)))))))
+       (sanitize-children node policy)))))
 
 (defmethod sanitize-node ((node plump:text-node) policy)
   "Text nodes are always safe, no action needed"
