@@ -15,6 +15,7 @@
   (allowed-protocols '("http" "https" "mailto") :type list)
   (allowed-css-properties nil :type list)
   (remove-comments t :type boolean)
+  (override-anchor-target "_blank" :type (or null string))
   (escape-cdata t :type boolean))
 
 ;;; Default policy - balanced security and usability

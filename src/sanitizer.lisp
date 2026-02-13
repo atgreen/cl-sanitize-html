@@ -160,7 +160,7 @@
     (remove-event-handlers element)
 
     ;; Set safe defaults for certain attributes
-    (set-safe-defaults element)))
+    (set-safe-defaults element policy)))
 
 (defun sanitize-url-attribute (element attr-name policy)
   "Sanitize URL in attribute ATTR-NAME of ELEMENT"
@@ -328,7 +328,7 @@
     (dolist (attr-name handlers)
       (plump:remove-attribute element attr-name))))
 
-(defun set-safe-defaults (element)
+(defun set-safe-defaults (element policy)
   "Set safe default attributes on certain elements"
   (let ((tag-name (plump:tag-name element)))
     ;; Links should open in new window and have safe rel
@@ -341,9 +341,9 @@
           (plump:set-attribute element "rel"
                                (format nil "~A noopener noreferrer" existing-rel)))
         (plump:set-attribute element "rel" "noopener noreferrer"))
-      ;; Set target="_blank" if not present
-      (unless (plump:attribute element "target")
-        (plump:set-attribute element "target" "_blank")))))
+      (when (policy-override-anchor-target policy)
+        (plump:set-attribute element "target"
+                             (policy-override-anchor-target policy))))))
 
 ;;; Utility functions
 
