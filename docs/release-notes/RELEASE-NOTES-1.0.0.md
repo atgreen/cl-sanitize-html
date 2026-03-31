@@ -3,12 +3,12 @@
 **Release date:** 2026-03-31
 
 This release addresses **4 security vulnerabilities** identified by the
-[CLSEC initiative](https://github.com/atgreen/CLSEC), including 2
+[CL-SEC initiative](https://github.com/CL-SEC/CL-SEC), including 2
 critical XSS bypasses.  All users should upgrade immediately.
 
 ## Security Fixes
 
-### CLSEC-2026-0129 — Double-encoded entity reversal enables XSS (CRITICAL)
+### CL-SEC-2026-0129 — Double-encoded entity reversal enables XSS (CRITICAL)
 
 The `decode-double-encoded-entities` function performed post-serialization
 regex rewriting of Plump's entity-encoded output, reversing safe encoding
@@ -18,7 +18,7 @@ security boundary that could be bypassed.
 **Fix:** The function has been removed entirely.  Plump's serializer
 produces correct output; double-encoding is no longer an issue.
 
-### CLSEC-2026-0130 — SVG/MathML namespace enables mXSS (CRITICAL)
+### CL-SEC-2026-0130 — SVG/MathML namespace enables mXSS (CRITICAL)
 
 The sanitizer had no special handling for SVG or MathML elements.  These
 were processed by the "remove tag, keep children" path, promoting their
@@ -32,7 +32,7 @@ template, audio, video, source, track, param, xmp, listing, and
 plaintext are now on the full-removal list — their content is discarded,
 not promoted.
 
-### CLSEC-2026-0131 — CSS comment bypass in expression() check (HIGH)
+### CL-SEC-2026-0131 — CSS comment bypass in expression() check (HIGH)
 
 The `css-value-dangerous-p` function did not strip CSS comments before
 checking for dangerous keywords.  IE's CSS parser ignores comments, so
@@ -42,7 +42,7 @@ the browser but bypassed the sanitizer's keyword check.
 **Fix:** CSS comments are now stripped via `strip-css-comments` before
 keyword matching.
 
-### CLSEC-2026-0132 — Protocol-relative URL bypass (MEDIUM)
+### CL-SEC-2026-0132 — Protocol-relative URL bypass (MEDIUM)
 
 Protocol-relative URLs (`//evil.com/track.gif`) passed the
 `protocol-allowed-p` check because they start with `/`, which matched

@@ -8,7 +8,7 @@
 
 (in-package #:sanitize-html)
 
-;;; CLSEC-2026-0129: decode-double-encoded-entities was removed.
+;;; CL-SEC-2026-0129: decode-double-encoded-entities was removed.
 ;;; Post-serialization regex rewriting of entity-encoded output is an
 ;;; anti-pattern that creates a fragile security boundary.  Plump's
 ;;; serializer produces correct output; double-encoding was a symptom
@@ -63,7 +63,7 @@
        (if (member (string-downcase tag-name)
                    '("script" "style" "noscript" "form" "input" "button"
                      "textarea" "select" "option" "optgroup" "fieldset" "legend"
-                     ;; CLSEC-2026-0130/0133: SVG/MathML and other dangerous elements
+                     ;; CL-SEC-2026-0130/0133: SVG/MathML and other dangerous elements
                      ;; whose children must NOT be promoted into the document.
                      "svg" "math" "iframe" "object" "embed" "applet"
                      "base" "meta" "link" "template"
@@ -273,7 +273,7 @@
 
 (defun strip-css-comments (css-string)
   "Remove CSS comments /* ... */ from CSS-STRING.
-   CLSEC-2026-0131: CSS comments must be stripped before keyword checks
+   CL-SEC-2026-0131: CSS comments must be stripped before keyword checks
    because IE's CSS parser ignores comments, so exp/**/ression() is
    interpreted as expression()."
   (cl-ppcre:regex-replace-all "/\\*.*?\\*/" css-string ""))

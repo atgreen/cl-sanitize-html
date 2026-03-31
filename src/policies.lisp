@@ -185,7 +185,7 @@
            (url-lower (string-downcase normalized)))
       (or
        ;; Relative URLs (no protocol) -- but NOT protocol-relative //evil.com
-       ;; CLSEC-2026-0132: protocol-relative URLs bypass the protocol check
+       ;; CL-SEC-2026-0132: protocol-relative URLs bypass the protocol check
        (and (> (length url-lower) 0)
             (char= (char url-lower 0) #\/)
             (or (<= (length url-lower) 1)
