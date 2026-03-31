@@ -8,21 +8,12 @@
 
 (in-package #:sanitize-html)
 
-(defun decode-double-encoded-entities (html-string)
-  "Fix double-encoded HTML entities that result from Plump serialization.
-   When Plump serializes, it encodes & to &amp;, so &gt; becomes &amp;gt;.
-   This function reverses that double-encoding."
-  (let ((result html-string))
-    ;; Fix double-encoded entities
-    (setf result (cl-ppcre:regex-replace-all "&amp;gt;" result "&gt;"))
-    (setf result (cl-ppcre:regex-replace-all "&amp;lt;" result "&lt;"))
-    (setf result (cl-ppcre:regex-replace-all "&amp;quot;" result "&quot;"))
-    (setf result (cl-ppcre:regex-replace-all "&amp;apos;" result "&apos;"))
-    (setf result (cl-ppcre:regex-replace-all "&amp;nbsp;" result "&nbsp;"))
-    ;; Fix triple-encoded ampersands (but not the ones we just created)
-    ;; Only fix &amp;amp; that isn't followed by gt/lt/quot/apos/nbsp
-    (setf result (cl-ppcre:regex-replace-all "&amp;amp;(?!(gt|lt|quot|apos|nbsp);)" result "&amp;"))
-    result))
+;;; CLSEC-2026-0129: decode-double-encoded-entities was removed.
+;;; Post-serialization regex rewriting of entity-encoded output is an
+;;; anti-pattern that creates a fragile security boundary.  Plump's
+;;; serializer produces correct output; double-encoding was a symptom
+;;; of encoding text that already contained entity references, which
+;;; should be handled by not double-encoding in the first place.
 
 (defun sanitize-html (html-string &optional (policy *default-policy*))
   "Sanitize HTML-STRING according to POLICY. Returns sanitized HTML string.
@@ -35,11 +26,9 @@
              ;; Sanitize all children of root
              (_ (sanitize-node root policy))
              ;; Serialize back to HTML
-             (serialized (plump:serialize root nil))
-             ;; Fix double-encoded entities caused by serialization
-             (fixed (decode-double-encoded-entities serialized)))
+             (serialized (plump:serialize root nil)))
         (declare (ignore _))
-        fixed)
+        serialized)
     (error (e)
       ;; If parsing fails, return empty string for safety
       (format *error-output* "HTML sanitization error: ~A~%" e)
@@ -73,7 +62,13 @@
        ;; For other tags, just remove the tag but keep children
        (if (member (string-downcase tag-name)
                    '("script" "style" "noscript" "form" "input" "button"
-                     "textarea" "select" "option" "optgroup" "fieldset" "legend")
+                     "textarea" "select" "option" "optgroup" "fieldset" "legend"
+                     ;; CLSEC-2026-0130/0133: SVG/MathML and other dangerous elements
+                     ;; whose children must NOT be promoted into the document.
+                     "svg" "math" "iframe" "object" "embed" "applet"
+                     "base" "meta" "link" "template"
+                     "audio" "video" "source" "track" "param"
+                     "xmp" "listing" "plaintext")
                    :test #'string-equal)
            (plump:remove-child node)
            (progn
@@ -276,15 +271,24 @@
                 (write-char char out)
                 (incf i))))))))
 
+(defun strip-css-comments (css-string)
+  "Remove CSS comments /* ... */ from CSS-STRING.
+   CLSEC-2026-0131: CSS comments must be stripped before keyword checks
+   because IE's CSS parser ignores comments, so exp/**/ression() is
+   interpreted as expression()."
+  (cl-ppcre:regex-replace-all "/\\*.*?\\*/" css-string ""))
+
 (defun css-value-dangerous-p (prop-value)
   "Check if a CSS property value contains dangerous content.
-   Decodes CSS escapes before checking to prevent bypass attacks."
-  (let ((decoded (string-downcase (decode-css-escapes prop-value))))
+   Decodes CSS escapes and strips comments before checking."
+  (let ((decoded (string-downcase
+                  (strip-css-comments
+                   (decode-css-escapes prop-value)))))
     (or (search "javascript:" decoded)
         (search "expression" decoded)
         (search "import" decoded)
         (search "@import" decoded)
-        (search "url(" decoded)  ; Block all url() to be safe
+        (search "url(" decoded)
         (search "behavior" decoded)
         (search "binding" decoded)
         (search "-moz-binding" decoded))))
