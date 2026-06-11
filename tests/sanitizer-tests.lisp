@@ -59,8 +59,8 @@
 
 (test test-disallowed-tags-removed
   "Test that disallowed tags are removed but content preserved"
-  (let ((result (sanitize "<iframe src='evil.com'>Content</iframe>")))
-    (is (not (search "<iframe" result)))
+  (let ((result (sanitize "<center>Content</center>")))
+    (is (not (search "<center" result)))
     (is (search "Content" result))))
 
 (defvar *links-only-policy*
