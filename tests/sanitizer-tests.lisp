@@ -365,6 +365,35 @@ script:alert(1)'>click</a>")
          (result (sanitize html)))
     (is (not (search "javascript" result)))))
 
+;;; Protocol-relative URL bypass prevention (CL-SEC-2026-0132 / CL-SEC-2026-0211)
+
+(test test-protocol-relative-slash-blocked
+  "Protocol-relative //evil.com URLs must not pass the relative-URL
+   allowance (CL-SEC-2026-0132)"
+  (is (not (safe-url-p "//evil.com/x")))
+  (let ((result (sanitize "<a href='//evil.com/x'>z</a>")))
+    (is (not (search "evil.com" result)))))
+
+(test test-protocol-relative-backslash-blocked
+  "Browsers treat backslash as a forward slash in the authority position,
+   so /\\evil.com, \\/evil.com and \\\\evil.com are protocol-relative and
+   must be blocked (CL-SEC-2026-0211)"
+  (is (not (safe-url-p "/\\evil.com/x")))
+  (is (not (safe-url-p "\\/evil.com")))
+  (is (not (safe-url-p "\\\\evil.com")))
+  (is (not (safe-url-p "/\\/evil.com")))
+  ;; entity-encoded backslash normalizes to the same payload
+  (is (not (search "evil.com" (sanitize "<a href='/&#92;evil.com/x'>z</a>"))))
+  (is (not (search "evil.com" (sanitize "<img src='/\\evil.com/track.gif'>")))))
+
+(test test-legit-relative-urls-still-allowed
+  "Legitimate relative URLs with a single leading slash remain allowed
+   (CL-SEC-2026-0211 regression guard)"
+  (is (safe-url-p "/page"))
+  (is (safe-url-p "/path/to/image.jpg"))
+  (is (safe-url-p "#anchor"))
+  (is (search "/legit/page" (sanitize "<a href='/legit/page'>z</a>"))))
+
 (test test-data-url-blocked-in-default
   "Test that data: URLs are blocked in default policy"
   (let* ((html "<img src='data:text/html,<script>alert(1)</script>'>")

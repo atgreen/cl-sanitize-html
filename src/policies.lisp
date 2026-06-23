@@ -185,11 +185,15 @@
            (url-lower (string-downcase normalized)))
       (or
        ;; Relative URLs (no protocol) -- but NOT protocol-relative //evil.com
-       ;; CL-SEC-2026-0132: protocol-relative URLs bypass the protocol check
-       (and (> (length url-lower) 0)
-            (char= (char url-lower 0) #\/)
-            (or (<= (length url-lower) 1)
-                (char/= (char url-lower 1) #\/)))
+       ;; CL-SEC-2026-0132: protocol-relative URLs bypass the protocol check.
+       ;; CL-SEC-2026-0211: backslash is equivalent to forward slash in the
+       ;; authority position for http(s) URLs (WHATWG URL spec), so //, /\,
+       ;; \/, and \\ are all protocol-relative.  Treat both separators alike.
+       (flet ((sep-p (c) (or (char= c #\/) (char= c #\\))))
+         (and (> (length url-lower) 0)
+              (sep-p (char url-lower 0))
+              (or (<= (length url-lower) 1)
+                  (not (sep-p (char url-lower 1))))))
        ;; Fragment identifiers
        (and (> (length url-lower) 0)
             (char= (char url-lower 0) #\#))
