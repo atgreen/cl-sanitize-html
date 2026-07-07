@@ -63,6 +63,11 @@
     (is (not (search "<center" result)))
     (is (search "Content" result))))
 
+(test test-dangerous-tags-content-removed
+  "Test that dangerous tags are removed including their content (CL-SEC-2026-0130/0133)"
+  (let ((result (sanitize "<iframe src='evil.com'>Content</iframe>")))
+    (is (string= "" result))))
+
 (defvar *links-only-policy*
   (make-policy
    :allowed-tags '("a")
