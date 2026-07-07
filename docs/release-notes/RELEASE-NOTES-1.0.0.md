@@ -3,8 +3,8 @@
 **Release date:** 2026-03-31
 
 This release addresses **4 security vulnerabilities** identified by the
-[CL-SEC initiative](https://github.com/CL-SEC/CL-SEC), including 2
-critical XSS bypasses.  All users should upgrade immediately.
+[CL-SEC initiative](https://github.com/CL-SEC), including 2 critical
+XSS bypasses.  All users should upgrade immediately.
 
 ## Security Fixes
 
