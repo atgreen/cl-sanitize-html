@@ -29,8 +29,13 @@
              (serialized (plump:serialize root nil)))
         (declare (ignore _))
         serialized)
-    (error (e)
-      ;; If parsing fails, return empty string for safety
+    ;; If parsing or traversal fails, return empty string for safety.
+    ;; STORAGE-CONDITION (e.g. SBCL's CONTROL-STACK-EXHAUSTED from deeply
+    ;; nested input) is NOT a subtype of ERROR, so it must be named
+    ;; explicitly or it would escape this guard and reach the caller as an
+    ;; unhandled condition -- a denial of service.  HANDLER-CASE unwinds the
+    ;; deep stack before running this handler, so recovery is safe.
+    ((or storage-condition error) (e)
       (format *error-output* "HTML sanitization error: ~A~%" e)
       "")))
 
@@ -85,10 +90,36 @@
   (declare (ignore policy))
   node)
 
+(defun neutralize-comment-text (text)
+  "Make TEXT safe to serialize inside <!-- ... -->.
+
+   Plump preserves comment text verbatim and its serializer emits it raw
+   (dom.lisp SERIALIZE-OBJECT), while browsers end a comment at -->, at
+   --!>, or -- at the start -- via an abrupt <!--> / <!---> close.  A
+   preserved comment could therefore terminate early and inject live
+   markup.  Operate on Plump's already-entity-decoded text so
+   entity-encoded terminators (e.g. &#45;&#45;!>) are covered as well:
+   collapse runs of hyphens so -- (and thus -->, --!>, <!--) cannot
+   appear, and pad a leading > / - or a trailing - so the abrupt-close and
+   closing-delimiter merge cases cannot form."
+  (when (null text)
+    (return-from neutralize-comment-text ""))
+  (let ((s (remove #\Nul (cl-ppcre:regex-replace-all "-{2,}" text "-"))))
+    (when (and (> (length s) 0)
+               (member (char s 0) '(#\> #\-)))
+      (setf s (concatenate 'string " " s)))
+    (when (and (> (length s) 0)
+               (char= (char s (1- (length s))) #\-))
+      (setf s (concatenate 'string s " ")))
+    s))
+
 (defmethod sanitize-node ((node plump:comment) policy)
-  "Remove or keep comment nodes based on policy"
-  (when (policy-remove-comments policy)
-    (plump:remove-child node)))
+  "Remove or keep comment nodes based on policy.
+   When comments are preserved, neutralize their text so it cannot break
+   out of the comment and inject live markup."
+  (if (policy-remove-comments policy)
+      (plump:remove-child node)
+      (setf (plump:text node) (neutralize-comment-text (plump:text node)))))
 
 (defmethod sanitize-node ((node plump:cdata) policy)
   "Handle CDATA sections based on policy"
