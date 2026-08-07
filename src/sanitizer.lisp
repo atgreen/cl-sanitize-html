@@ -29,8 +29,13 @@
              (serialized (plump:serialize root nil)))
         (declare (ignore _))
         serialized)
-    (error (e)
-      ;; If parsing fails, return empty string for safety
+    ;; If parsing or traversal fails, return empty string for safety.
+    ;; STORAGE-CONDITION (e.g. SBCL's CONTROL-STACK-EXHAUSTED from deeply
+    ;; nested input) is NOT a subtype of ERROR, so it must be named
+    ;; explicitly or it would escape this guard and reach the caller as an
+    ;; unhandled condition -- a denial of service.  HANDLER-CASE unwinds the
+    ;; deep stack before running this handler, so recovery is safe.
+    ((or storage-condition error) (e)
       (format *error-output* "HTML sanitization error: ~A~%" e)
       "")))
 

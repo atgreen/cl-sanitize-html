@@ -289,6 +289,16 @@
       (is (> (length result) 0))
       (is (search "<p>" result)))))
 
+(test test-deep-nesting-does-not-escape
+  "Pathologically deep nesting must not propagate an unhandled condition to
+   the caller.  Stack exhaustion during parsing/traversal is a
+   STORAGE-CONDITION, not an ERROR, so SANITIZE must still catch it and
+   return safely rather than crashing the caller (denial-of-service
+   regression guard)."
+  (let ((deep (with-output-to-string (s)
+                (dotimes (i 200000) (write-string "<div>" s)))))
+    (finishes (sanitize deep))))
+
 ;;; Utility function tests
 
 (test test-safe-url-p
