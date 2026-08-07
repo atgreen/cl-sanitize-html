@@ -8,7 +8,7 @@
   :description "OWASP-style HTML sanitization library for Common Lisp"
   :author      "Anthony Green <green@moxielogic.com>"
   :license     "MIT"
-  :version     "1.0.1"
+  :version     "1.0.2"
   :depends-on  ("plump"
                 "lquery"
                 "cl-ppcre"
