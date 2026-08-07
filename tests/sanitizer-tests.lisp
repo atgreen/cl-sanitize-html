@@ -151,6 +151,36 @@
     (is (not (search "comment" result)))
     (is (search "<p>" result))))
 
+(test test-preserved-comment-cannot-break-out
+  "When comments are preserved (:remove-comments nil) their content must be
+   neutralized so it cannot terminate the comment early (--> / --!>) and
+   inject live markup.  Plump ends a comment only at -->, but browsers also
+   close at --!>, and Plump decodes entities in comment text while emitting
+   it raw -- so the emitted comment body must contain no '--' sequence,
+   which removes every terminator (-->, --!>, <!--).  Regression guard for
+   the comment-breakout XSS."
+  (let ((keep (make-policy
+               :allowed-tags '("p")
+               :allowed-attributes '(("*" . ("class")))
+               :remove-comments nil)))
+    (flet ((comment-body-clean-p (result)
+             ;; No '--' between the opening '<!--' and the closing '-->'.
+             (not (search "--" (subseq result 4 (max 4 (- (length result) 3)))))))
+      ;; Literal --!> terminator before an <img onerror> payload.
+      (is (comment-body-clean-p
+           (sanitize "<!-- --!><img src=x onerror=alert(1)> -->" keep)))
+      ;; Entity-encoded --!> (Plump decodes entities in comment text first).
+      (is (comment-body-clean-p
+           (sanitize "<!-- &#45;&#45;!><img src=x onerror=alert(1)> -->" keep)))
+      ;; Entity-encoded --> re-emerging inside the comment body.
+      (is (comment-body-clean-p
+           (sanitize "<!-- &#45;&#45;&#62;<img src=x onerror=alert(1)> -->" keep))))
+    ;; Benign comments are still preserved (fidelity regression guard).
+    (is (search "normal note"
+                (sanitize "<p><!-- normal note -->hi</p>" keep)))
+    ;; Default policy still strips comments entirely.
+    (is (string= "" (sanitize "<!-- --!><img src=x onerror=alert(1)> -->")))))
+
 ;;; Safe defaults
 
 (test test-links-get-noopener
